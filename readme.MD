@@ -21,7 +21,8 @@ pg_restore -U postgres -d db_target --data-only deviceattendances.dump;
 ALTER TABLE iclock_transaction
 ADD COLUMN issend BOOLEAN DEFAULT FALSE;
 ```
-
+ALTER TABLE personnel_employee_area
+ADD COLUMN issend BOOLEAN DEFAULT FALSE;
 ```sql
 ALTER TABLE personnel_employee
 ADD COLUMN issend BOOLEAN DEFAULT FALSE;

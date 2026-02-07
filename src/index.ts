@@ -14,14 +14,14 @@ const port = process.env.PORT || 3000;
 app.use('/export', exportRoutes);
 
 /// ini yg akan di jalan kan 1 per 1 yak
-// startAreaSync();
-// startDepartmentSync();
+//startAreaSync();
+//startDepartmentSync();
 // startDeviceSync();
-// startUsersSync();
+ //startUsersSync();
 // startEmployeeRevisiSync2();
 // startEmployeeHasAreaSync();
-// startUsersHasAreaSync();
-// startEmployeeNoExistsSync()
+//startUsersHasAreaSync();
+startEmployeeNoExistsSync()
 
 app.listen(port, () => {
   console.log(`Postgres reader listening on port ${port}`);

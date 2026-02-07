@@ -516,8 +516,8 @@ export const startUsersHasAreaSync = () => {
       const result = await pgPool.query(`
         SELECT
           u.myuser_id as "userId",
-          u.area_id as "areaId",
-        FROM auth_user_auth_area
+          u.area_id as "areaId"
+        FROM auth_user_auth_area u
       `);
 
       const rows = result.rows;
@@ -536,7 +536,7 @@ export const startUsersHasAreaSync = () => {
         "areaId",
         "createdAt",
         "updatedAt"
-      ) VALUES ${payload.map((p, i) => `($${i * 4 + 1}, $${i * 4 + 2}, NOW(), NOW())`).join(", ")}`,
+      ) VALUES ${payload.map((p, i) => `($${i * 2 + 1}, $${i * 2 + 2}, NOW(), NOW())`).join(", ")}`,
         payload.flatMap(p => [p.userId, p.areaId])
       );
 
