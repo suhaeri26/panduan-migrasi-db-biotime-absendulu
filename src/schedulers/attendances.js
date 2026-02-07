@@ -3,6 +3,10 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+/* ======================
+   DATABASE CONNECTION
+====================== */
+
 const sourcePool = new Pool({
   host: "localhost",
   port: 5432,
@@ -21,27 +25,32 @@ const targetPool = new Pool({
 
 const BATCH = 2000;
 
+/* ======================
+   PROCESS PER DEVICE
+====================== */
+
 async function processDevice(workerId, deviceId) {
   console.log(`🔧 Worker ${workerId} start device ${deviceId}`);
 
   while (true) {
-    const rows = await sourcePool.query(
+    /* 1️⃣ Ambil data source */
+    const { rows } = await sourcePool.query(
       `
       SELECT 
         t.id,
-        t.terminal_sn AS "deviceSn",
+        t.terminal_sn     AS "deviceSn",
         t.terminal_alias AS "deviceName",
-        t.area_alias AS "areaName",
-        t.terminal_id AS "deviceId",
-        t.emp_code AS pin,
-        t.punch_time AS "atttime",
-        t.punch_state AS "attstatus",
-        t.verify_type AS "verify",
-        t.work_code AS "workCode",
-        t.is_mask AS "maskflag",
+        t.area_alias     AS "areaName",
+        t.terminal_id    AS "deviceId",
+        t.emp_code       AS pin,
+        t.punch_time     AS "atttime",
+        t.punch_state    AS "attstatus",
+        t.verify_type    AS "verify",
+        t.work_code      AS "workCode",
+        t.is_mask        AS "maskflag",
         t.temperature
       FROM iclock_transaction t
-      WHERE t.issend = false 
+      WHERE t.issend = false
         AND t.punch_time >= TIMESTAMP '2025-01-01 00:00:00'
         AND t.terminal_id = $1
       ORDER BY t.id
@@ -50,21 +59,19 @@ async function processDevice(workerId, deviceId) {
       [deviceId, BATCH]
     );
 
-    if (rows.rows.length === 0) {
+    if (rows.length === 0) {
       console.log(`✅ Worker ${workerId} device ${deviceId} finished`);
       break;
     }
 
-    const data = rows.rows;
-
-    // INSERT ke DB tujuan
-    await targetPool.query(
-      `
+    /* 2️⃣ INSERT ke target (AMAN, idempotent) */
+    const insertQuery = `
       INSERT INTO deviceattendances (
         "deviceSn","deviceId","pin","atttime","attstatus",
         "verify","workCode","maskflag","temperature",
         "deviceName","areaName","createdAt","updatedAt"
-      ) VALUES ${data
+      )
+      VALUES ${rows
         .map(
           (_, i) =>
             `($${i * 11 + 1},$${i * 11 + 2},$${i * 11 + 3},$${i * 11 + 4},
@@ -72,69 +79,102 @@ async function processDevice(workerId, deviceId) {
               $${i * 11 + 9},$${i * 11 + 10},$${i * 11 + 11},NOW(),NOW())`
         )
         .join(",")}
-      `,
-      data.flatMap((r) => [
-        r.deviceSn,
-        r.deviceId,
-        r.pin,
-        r.atttime,
-        Number(r.attstatus),
-        r.verify,
-        r.workCode || null,
-        r.maskflag,
-        r.temperature ?? 0,
-        r.deviceName,
-        r.areaName,
-      ])
+      ON CONFLICT ("pin","atttime") DO NOTHING
+      RETURNING "pin","atttime";
+    `;
+
+    const insertValues = rows.flatMap((r) => [
+      r.deviceSn,
+      r.deviceId,
+      r.pin,
+      r.atttime,
+      Number(r.attstatus),
+      r.verify,
+      r.workCode || null,
+      r.maskflag,
+      r.temperature ?? 0,
+      r.deviceName,
+      r.areaName,
+    ]);
+
+    const insertResult = await targetPool.query(
+      insertQuery,
+      insertValues
     );
 
-    // UPDATE source
-    await sourcePool.query(
-      `UPDATE iclock_transaction SET issend = true WHERE id = ANY($1)`,
-      [data.map((r) => r.id)]
-    );
+    /* 3️⃣ Tandai source HANYA jika berhasil masuk */
+    if (insertResult.rowCount > 0) {
+      const idsToUpdate = rows.map((r) => r.id);
+
+      await sourcePool.query(
+        `
+        UPDATE iclock_transaction
+        SET issend = true
+        WHERE id = ANY($1)
+        `,
+        [idsToUpdate]
+      );
+    }
 
     console.log(
-      `➡️ Worker ${workerId} device ${deviceId} moved ${data.length}`
+      `➡️ Worker ${workerId} device ${deviceId} inserted ${insertResult.rowCount}/${rows.length}`
     );
   }
 }
+
+/* ======================
+   WORKER
+====================== */
 
 async function worker(workerId, deviceIds) {
   for (const deviceId of deviceIds) {
     await processDevice(workerId, deviceId);
   }
-  console.log(`🏁 Worker ${workerId} finished all devices`);
+  console.log(`🏁 Worker ${workerId} finished`);
 }
 
-const devices1 = [45,327,234,207,51,357,331,196,359,4,291,232,34,300,44,134,97,116,245,56,76,35,70,90,38,7,275,64,118,339,324,92,59,329,375,192,332,336,251,175,115,388,154,330,408,43,174,3,366,223,247,340,114,392,93,328,163, 17]
-const devices2 = [15,19,431,409,31,233,131,140,142,440,414,411,432,421,65,410,416,419,418,428,372,180,435,77,412,295,398,415,72,417,420,422,423,429,179,36,13,424,123,405,430,29,26,298,176,181,413,20,30,28,89,425,389,141,436,362,367,439,426,25,395,216,365,370];
-const devices3= [284,46,394,255,390,434,33,10,194,296,427,294,98,177,143,319,119,316,133,12,2,99,218,151,182,321,117,136,40,297,391,55,437,337,252,125,113,338,322,393,438,48,323,91,364,42,313,95,191,47,334,224,52,289,333,197,335,14,288,286,249,158,69,215,124,94];
+/* ======================
+   DEVICE GROUP
+====================== */
 
+const devices1 = [45,327,234,207,51,357,331,196,359,4];
+const devices2 = [15,19,431,409,31,233,131,140,142];
+const devices3 = [284,46,394,255,390,434,33,10,194];
+
+/* ======================
+   MAIN
+====================== */
 
 (async () => {
   try {
     console.log("🚀 Attendance migration started");
+
     await Promise.all([
       worker(1, devices1),
       worker(2, devices2),
       worker(3, devices3),
     ]);
+
     console.log("✅ Attendance migration finished");
   } catch (err) {
     console.error("❌ Migration failed", err);
   } finally {
-    await pgPool.end();   // WAJIB untuk CLI
-    process.exit(0);     // BIAR NODE KELUAR
+    await sourcePool.end();
+    await targetPool.end();
+    process.exit(0);
   }
 })();
 
+/* ======================
+   GRACEFUL SHUTDOWN
+====================== */
+
 process.on("SIGINT", async () => {
-  console.log("🛑 SIGINT received, closing pool...");
-  await pgPool.end();
+  console.log("🛑 SIGINT received, closing pools...");
+  await sourcePool.end();
+  await targetPool.end();
   process.exit(0);
 });
-
 
 
 
