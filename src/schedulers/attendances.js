@@ -23,7 +23,7 @@ const targetPool = new Pool({
   password: "BSP_AMI_2025",
 });
 
-const BATCH = 2000;
+const BATCH = 20000;
 
 /* ======================
    PROCESS PER DEVICE
@@ -79,9 +79,9 @@ async function processDevice(workerId, deviceId) {
               $${i * 11 + 9},$${i * 11 + 10},$${i * 11 + 11},NOW(),NOW())`
         )
         .join(",")}
-      ON CONFLICT ("pin","atttime") DO NOTHING
-      RETURNING "pin","atttime";
-    `;
+        `;
+        // ON CONFLICT ("pin","atttime") DO NOTHING
+        // RETURNING "pin","atttime";
 
     const insertValues = rows.flatMap((r) => [
       r.deviceSn,
