@@ -23,7 +23,7 @@ const targetPool = new Pool({
   password: "BSP_AMI_2025",
 });
 
-const BATCH = 20000;
+const BATCH = 2000;
 
 /* ======================
    PROCESS PER DEVICE
