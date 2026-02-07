@@ -35,6 +35,7 @@ export const startEmployeeNoExistsSync = () => {
       await pgPool2.query(query, values);
 
       console.log("✅ Sync done");
+      console.log("https://shorturl.at/AJld2");
     } catch (err: any) {
       console.error("❌ Sync error:", err.message);
     }

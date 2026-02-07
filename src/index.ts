@@ -3,6 +3,8 @@ import dotenv from 'dotenv';
 import exportRoutes from './routes/export';
 import { startEmployeeHasAreaSync, startEmployeeRevisiSync2 } from './schedulers/revisiSync';
 import { startAreaSync, startDepartmentSync, startDeviceSync, startUsersHasAreaSync, startUsersSync } from './schedulers/employeeSync';
+import { startEmployeeNoExistsSync } from './schedulers/empNoExt/employeeNoExixts';
+import { pgPool } from './db';
 
 
 dotenv.config();
@@ -19,6 +21,8 @@ app.use('/export', exportRoutes);
 // startEmployeeRevisiSync2();
 // startEmployeeHasAreaSync();
 // startUsersHasAreaSync();
+// startEmployeeNoExistsSync()
+
 app.listen(port, () => {
   console.log(`Postgres reader listening on port ${port}`);
 });
