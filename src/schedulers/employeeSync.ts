@@ -254,8 +254,8 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
   return result;
 }
 
-export const startAttendancesSync = () => {
-  cron.schedule("*/1 * * * * *", async () => {
+export const startAttendancesSync = (deviceId: number) => {
+  cron.schedule("*/3 * * * * *", async () => {
     console.log("🚀 Sync started...");
 
     try {
@@ -273,7 +273,7 @@ export const startAttendancesSync = () => {
           t.temperature
         FROM iclock_transaction t
         JOIN personnel_employee e ON t.emp_code = e.emp_code
-        WHERE t."issend" = false
+        WHERE t."issend" = false AND t.terminal_id = ${deviceId}
         LIMIT ${MAX_DATA};
       `);
 
@@ -282,51 +282,57 @@ export const startAttendancesSync = () => {
         console.log("✅ Tidak ada data");
         return;
       }
-
-      const batches = chunkArray(rows, BATCH_SIZE);
-
-      const results = await Promise.allSettled(
-        batches.map(async (batch) => {
-          const ids = batch.map(b => b.id);
-          const payload = batch.map(({ id, ...rest }) => rest);
-
-          await axios.post(
-            "http://test-presensi.bakriesumatera.com:8081/api/bulk-create-deviceAttendance",
-            payload,
-            {
-              headers: {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json"
-              },
-              timeout: 10000
-            }
-          );
-
-          // update hanya yang sukses
-          await pgPool.query(
-            `UPDATE iclock_transaction 
-             SET "issend" = true 
-             WHERE id = ANY($1)`,
-            [ids]
-          );
-
-          return ids.length;
-        })
+      await pgPool2.query(`
+      INSERT INTO "deviceattendances" (
+        "deviceSn",
+        "deviceId",
+        "pin",
+        "atttime",
+        "attstatus",
+        "verify",
+        "workCode",
+        "maskflag",
+        "temperature",
+        "deviceName",
+        "areaName",
+        "createdAt",
+        "updatedAt"
+      ) VALUES ${rows.map((a, i) => `(
+        $${i * 11 + 1},
+        $${i * 11 + 2},
+        $${i * 11 + 3},
+        $${i * 11 + 4},
+        $${i * 11 + 5},
+        $${i * 11 + 6},
+        $${i * 11 + 7},
+        $${i * 11 + 8},
+        $${i * 11 + 9},
+        $${i * 11 + 10},
+        $${i * 11 + 11},
+        NOW(),
+        NOW()
+      )`).join(', ')}`,
+        rows.flatMap(r => [
+          r.deviceSn,
+          r.deviceId,
+          r.pin,
+          r.atttime,
+          r.attstatus,
+          r.verify,
+          r.workCode,
+          r.maskflag,
+          r.temperature
+        ])
       );
 
-      const success = results.filter(r => r.status === "fulfilled").length;
-      const failed = results.filter(r => r.status === "rejected").length;
-
-      console.log(`✅ Success batch: ${success}`);
-      if (failed > 0) {
-        console.log(`⚠️ Failed batch: ${failed}`);
-      }
+      console.log(`✅ Synced ${rows.length} attendances`);
 
     } catch (err: any) {
       console.error("❌ Sync error:", err.message);
     }
   });
 };
+
 
 
 export const startUsersSync = () => {
@@ -465,9 +471,11 @@ export const startAttendancesSync2 = () => {
         "workCode",
         "maskflag",
         "temperature",
+        "deviceName",
+        "areaName",
         "createdAt",
         "updatedAt"
-      ) VALUES ${rows.map((r, i) => `($${i * 9 + 1}, $${i * 9 + 2}, $${i * 9 + 3}, $${i * 9 + 4}, $${i * 9 + 5}, $${i * 9 + 6}, $${i * 9 + 7}, $${i * 9 + 8}, $${i * 9 + 9}, NOW(), NOW())`).join(", ")}`,
+      ) VALUES ${rows.map((r, i) => `($${i * 9 + 1}, $${i * 9 + 2}, $${i * 9 + 3}, $${i * 9 + 4}, $${i * 9 + 5}, $${i * 9 + 6}, $${i * 9 + 7}, $${i * 9 + 8}, $${i * 9 + 9}, $${i * 9 + 10}, NOW(), NOW())`).join(", ")}`,
         rows.flatMap(r => [
           r.deviceSn,
           r.deviceId,
@@ -477,7 +485,9 @@ export const startAttendancesSync2 = () => {
           r.verify,
           r.workCode || null,
           r.maskflag,
-          r.temperature !== null ? Number(r.temperature) : 0
+          r.temperature !== null ? Number(r.temperature) : 0,
+          r.deviceName,
+          r.areaName
         ])
       );
 

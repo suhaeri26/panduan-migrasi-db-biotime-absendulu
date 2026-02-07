@@ -1,0 +1,203 @@
+import { Pool } from "pg";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+const sourcePool = new Pool({
+  host: "localhost",
+  port: 5432,
+  database: "bakrie_new",
+  user: "postgres",
+  password: "Suhaeri_2610",
+});
+
+const targetPool = new Pool({
+  host: "localhost",
+  port: 5432,
+  database: "absendulu_bakrie",
+  user: "postgres",
+  password: "Suhaeri_2610",
+});
+
+const BATCH = 2000;
+
+async function processDevice(workerId, deviceId) {
+  console.log(`🔧 Worker ${workerId} start device ${deviceId}`);
+
+  while (true) {
+    const rows = await sourcePool.query(
+      `
+      SELECT 
+        t.id,
+        t.terminal_sn AS "deviceSn",
+        t.terminal_alias AS "deviceName",
+        t.area_alias AS "areaName",
+        t.terminal_id AS "deviceId",
+        t.emp_code AS pin,
+        t.punch_time AS "atttime",
+        t.punch_state AS "attstatus",
+        t.verify_type AS "verify",
+        t.work_code AS "workCode",
+        t.is_mask AS "maskflag",
+        t.temperature
+      FROM iclock_transaction t
+      WHERE t.issend = false
+        AND t.terminal_id is null
+      ORDER BY t.id
+      LIMIT $1
+      `,
+      [BATCH]
+    );
+
+    if (rows.rows.length === 0) {
+      console.log(`✅ Worker ${workerId} device ${deviceId} finished`);
+      break;
+    }
+
+    const data = rows.rows;
+
+    // INSERT ke DB tujuan
+    await targetPool.query(
+      `
+      INSERT INTO deviceattendances (
+        "deviceSn","deviceId","pin","atttime","attstatus",
+        "verify","workCode","maskflag","temperature",
+        "deviceName","areaName","createdAt","updatedAt"
+      ) VALUES ${data
+        .map(
+          (_, i) =>
+            `($${i * 11 + 1},$${i * 11 + 2},$${i * 11 + 3},$${i * 11 + 4},
+              $${i * 11 + 5},$${i * 11 + 6},$${i * 11 + 7},$${i * 11 + 8},
+              $${i * 11 + 9},$${i * 11 + 10},$${i * 11 + 11},NOW(),NOW())`
+        )
+        .join(",")}
+      `,
+      data.flatMap((r) => [
+        r.deviceSn,
+        r.deviceId,
+        r.pin,
+        r.atttime,
+        Number(r.attstatus),
+        r.verify,
+        r.workCode || null,
+        r.maskflag,
+        r.temperature ?? 0,
+        r.deviceName,
+        r.areaName,
+      ])
+    );
+
+    // UPDATE source
+    await sourcePool.query(
+      `UPDATE iclock_transaction SET issend = true WHERE id = ANY($1)`,
+      [data.map((r) => r.id)]
+    );
+
+    console.log(
+      `➡️ Worker ${workerId} device ${deviceId} moved ${data.length}`
+    );
+  }
+}
+
+async function worker(workerId, deviceIds) {
+  for (const deviceId of deviceIds) {
+    await processDevice(workerId, deviceId);
+  }
+  console.log(`🏁 Worker ${workerId} finished all devices`);
+}
+
+const devices1 = [45,327,234,207,51,357,331,196,359,4,291,232,34,300,44,134,97,116,245,56,76,35,70,90,38,7,275,64,118,339,324,92,59,329,375,192,332,336,251,175,115,388,154,330,408,43,174,3,366,223,247,340,114,392,93,328,163, 17]
+const devices2 = [15,19,431,409,31,233,131,140,142,440,414,411,432,421,65,410,416,419,418,428,372,180,435,77,412,295,398,415,72,417,420,422,423,429,179,36,13,424,123,405,430,29,26,298,176,181,413,20,30,28,89,425,389,141,436,362,367,439,426,25,395,216,365,370];
+const devices3= [284,46,394,255,390,434,33,10,194,296,427,294,98,177,143,319,119,316,133,12,2,99,218,151,182,321,117,136,40,297,391,55,437,337,252,125,113,338,322,393,438,48,323,91,364,42,313,95,191,47,334,224,52,289,333,197,335,14,288,286,249,158,69,215,124,94];
+
+
+(async () => {
+  try {
+    console.log("🚀 Attendance migration started");
+    // await Promise.all([
+    //   worker(1, devices1),
+    //   worker(2, devices2),
+    //   worker(3, devices3),
+    // ]);
+    await processDevice(1, null);
+    console.log("✅ Attendance migration finished");
+  } catch (err) {
+    console.error("❌ Migration failed", err);
+  } finally {
+    await pgPool.end();   // WAJIB untuk CLI
+    process.exit(0);     // BIAR NODE KELUAR
+  }
+})();
+
+process.on("SIGINT", async () => {
+  console.log("🛑 SIGINT received, closing pool...");
+  await pgPool.end();
+  process.exit(0);
+});
+
+
+
+
+// const devicestahap1 = [140,142,440];
+// const devicestahap2 = [416,419,418];
+// const devicestahap3 = [398,415,72];
+// const devicestahap4 = [13,424,123];
+// const devicestahap5 = [20,30,28]; 
+// const devicestahap6 = [89,425,389]; 
+// const devicestahap7 = [395,216,365]; 
+// const devicestahap8 = [98,177,143];
+// const devicestahap9 = [218,151,182];
+// const devicestahap10 = [337,252,125]; 
+// const devicestahap11 = [323,91,364];
+// const devicestahap12 = [52,289,333,]; 
+// const devicestahap13 = [215,124,94];
+// const devicestahap14 = [196,359,4]; 
+// const devicestahap15 = [300,44,134,]; 
+// const devicestahap16 = [275,64,118];
+// const devicestahap17 = [332,336,251];
+// const devicestahap18 = [174,3,366];
+// const devicestahap19 = [392,93,328];
+// const devicestahap20 = [15,19,431]
+// const devicestahap21 = [409,31,233]
+// const devicestahap22 = [414,411,432]
+// const devicestahap23 = [421,65,410]
+// const devicestahap24 = [372,180,435]
+// const devicestahap25 = [77,412,295]
+// const devicestahap26 = [420,422,423]
+// const devicestahap27 = [429,179,36]
+// const devicestahap28 = [131,428,417]
+// const devicestahap29 = [430,29,26]
+// const devicestahap30 = [247,340,114]
+// const devicestahap31 = [115,388,154]
+// const devicestahap32 = [330,408,43]
+// const devicestahap33 = [298,163, 17]
+// const devicestahap34 = [176,181,413] 
+// const devicestahap35 = [436,362,367]
+// const devicestahap36 = [439,426,25] 
+// const devicestahap37 = [390,434,405]
+// const devicestahap38 = [46,394,255]
+// const devicestahap39 = [370,284, 141]
+// const devicestahap40 = [33,10,194]   
+// const devicestahap41 = [296,427,294]
+// const devicestahap42 = [119,316,133]
+// const devicestahap43 = [12,2,99]
+// const devicestahap44 = [321, 319, 117]  
+// const devicestahap45 = [136,40,297]
+// const devicestahap46 = [391,55,437]
+// const devicestahap47 = [113,338,322]  
+// const devicestahap48 = [393,438,48]
+// const devicestahap49 = [313,95,191]
+// const devicestahap50 = [47,334,224]
+// const devicestahap51 = [335,14,288] 
+// const devicestahap52 = [286,249,158] 
+// const devicestahap53 = [69, 197, 42] 
+// const devicestahap54 = [45,327,234] 
+// const devicestahap55 = [207,51,357] 
+// const devicestahap56 = [331,245,56]
+// const devicestahap57 = [329,375,192] 
+// const devicestahap58 = [90,38,7] 
+// const devicestahap59 = [97,116,339]
+// const devicestahap60 = [291,232,34] 
+// const devicestahap61 = [76,35,70] 
+// const devicestahap62 = [324,92,59] 
+// const devicestahap63 = [175, 223]
