@@ -6,9 +6,9 @@ dotenv.config();
 const sourcePool = new Pool({
   host: "localhost",
   port: 5432,
-  database: "bakrie_new",
+  database: "restore_biotime",
   user: "postgres",
-  password: "Suhaeri_2610",
+  password: "BSP_AMI_2025",
 });
 
 const targetPool = new Pool({
@@ -16,7 +16,7 @@ const targetPool = new Pool({
   port: 5432,
   database: "absendulu_bakrie",
   user: "postgres",
-  password: "Suhaeri_2610",
+  password: "presensi",
 });
 
 const BATCH = 2000;
@@ -41,12 +41,13 @@ async function processDevice(workerId, deviceId) {
         t.is_mask AS "maskflag",
         t.temperature
       FROM iclock_transaction t
-      WHERE t.issend = false
-        AND t.terminal_id is null
+      WHERE t.issend = false 
+        AND t.punch_time >= TIMESTAMP '2025-01-01 00:00:00'
+        AND t.terminal_id = $1
       ORDER BY t.id
-      LIMIT $1
+      LIMIT $2
       `,
-      [BATCH]
+      [deviceId, BATCH]
     );
 
     if (rows.rows.length === 0) {
@@ -114,12 +115,11 @@ const devices3= [284,46,394,255,390,434,33,10,194,296,427,294,98,177,143,319,119
 (async () => {
   try {
     console.log("🚀 Attendance migration started");
-    // await Promise.all([
-    //   worker(1, devices1),
-    //   worker(2, devices2),
-    //   worker(3, devices3),
-    // ]);
-    await processDevice(1, null);
+    await Promise.all([
+      worker(1, devices1),
+      worker(2, devices2),
+      worker(3, devices3),
+    ]);
     console.log("✅ Attendance migration finished");
   } catch (err) {
     console.error("❌ Migration failed", err);
