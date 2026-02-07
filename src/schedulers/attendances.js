@@ -18,9 +18,9 @@ const sourcePool = new Pool({
 const targetPool = new Pool({
   host: "localhost",
   port: 5432,
-  database: "absendulu_bakrie",
+  database: "presensi",
   user: "postgres",
-  password: "presensi",
+  password: "BSP_AMI_2025",
 });
 
 const BATCH = 2000;
