@@ -103,7 +103,7 @@ async function processDevice(workerId, deviceId) {
     );
 
     /* 3️⃣ Tandai source HANYA jika berhasil masuk */
-    if (insertResult.rowCount > 0) {
+    // if (insertResult.rowCount > 0) {
       const idsToUpdate = rows.map((r) => r.id);
 
       await sourcePool.query(
@@ -114,7 +114,7 @@ async function processDevice(workerId, deviceId) {
         `,
         [idsToUpdate]
       );
-    }
+    // }
 
     console.log(
       `➡️ Worker ${workerId} device ${deviceId} inserted ${insertResult.rowCount}/${rows.length}`
