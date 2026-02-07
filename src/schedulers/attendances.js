@@ -51,7 +51,6 @@ async function processDevice(workerId, deviceId) {
         t.temperature
       FROM iclock_transaction t
       WHERE t.issend = false
-        AND t.punch_time >= TIMESTAMP '2025-12-01 00:00:00'
         AND t.terminal_id = $1
       ORDER BY t.id
       LIMIT $2
