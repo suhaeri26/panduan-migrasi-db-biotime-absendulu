@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_URL = "http://test-presensi.bakriesumatera.com:8081/api/attendances/recalculate";
+const API_URL = "http://localhost:8081/api/attendances/recalculate";
 
 function formatDate(date) {
   return date.toISOString().split("T")[0];
@@ -9,6 +9,8 @@ function formatDate(date) {
 async function run() {
   let start = new Date("2024-08-01");
   let end = new Date("2025-12-29");
+  // let start = new Date("202-08-01");
+  // let end = new Date("2025-12-29");
 
   while (start <= end) {
     const dateStr = formatDate(start);
