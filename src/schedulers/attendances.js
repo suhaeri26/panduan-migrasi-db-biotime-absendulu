@@ -52,6 +52,7 @@ async function processDevice(workerId, deviceId) {
       FROM iclock_transaction t
       WHERE t.issend = false
         AND t.terminal_id = $1
+        AND t.punch_time > '2026-02-01 00:00:00'
       ORDER BY t.id
       LIMIT $2
       `,
