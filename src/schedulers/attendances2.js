@@ -50,15 +50,15 @@ async function processDevice() {
         t.is_mask        AS "maskflag",
         t.temperature
       FROM iclock_transaction t
-      WHERE upload_time > '2026-02-07 12:30:00'
+      WHERE upload_time > '2026-02-07 12:30:00' AND t.issend = false
       ORDER BY t.id
-      LIMIT $2
+      LIMIT $1
       `,
-      [deviceId, BATCH]
+      [BATCH]
     );
 
     if (rows.length === 0) {
-      console.log(`✅ Worker ${workerId} device ${deviceId} finished`);
+      console.log(`✅ Worker  finished`);
       break;
     }
 
@@ -115,7 +115,7 @@ async function processDevice() {
     // }
 
     console.log(
-      `➡️ Worker ${workerId} device ${deviceId} inserted ${insertResult.rowCount}/${rows.length}`
+      `➡️  inserted ${insertResult.rowCount}/${rows.length}`
     );
   }
 }
