@@ -32,3 +32,27 @@ ADD COLUMN issend BOOLEAN DEFAULT FALSE;
 https://shorturl.at/AJld2
 ```
 
+mkdir C:\cloudflared
+cd C:\cloudflared
+
+Invoke-WebRequest `
+  -Uri https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe `
+  -OutFile cloudflared.exe
+
+
+.\cloudflared.exe --version
+
+setx PATH "$env:PATH;C:\cloudflared" /M
+
+cloudflared --version
+cloudflared tunnel create my-tunnel
+cloudflared tunnel route dns my-tunnel cloudflared-bakrie.absendulu.co.id
+```js
+tunnel: my-tunnel
+credentials-file: C:\Users\<USER>\.cloudflared\<TUNNEL-ID>.json
+
+ingress:
+  - hostname: cloudflared-bakrie.absendulu.co.id
+    service: http://localhost:8080
+  - service: http_status:404
+```
