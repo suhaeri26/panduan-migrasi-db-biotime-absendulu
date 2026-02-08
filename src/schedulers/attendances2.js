@@ -50,7 +50,7 @@ async function processDevice() {
         t.is_mask        AS "maskflag",
         t.temperature
       FROM iclock_transaction t
-      WHERE upload_time > '2026-02-07 12:30:00' AND t.issend = false
+      WHERE upload_time > '2026-02-07 00:00:00' AND t.issend = false
       ORDER BY t.id
       LIMIT $1
       `,
