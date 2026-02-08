@@ -7,8 +7,8 @@ function formatDate(date) {
 }
 
 async function run() {
-  let start = new Date("2024-08-01");
-  let end = new Date("2025-12-29");
+  let start = new Date("2026-01-01");
+  let end = new Date("2025-02-08");
   // let start = new Date("202-08-01");
   // let end = new Date("2025-12-29");
 
