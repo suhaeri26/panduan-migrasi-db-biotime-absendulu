@@ -26,12 +26,14 @@ export const getDeviceCacheInfo = () => ({
   size: deviceCache.size,
   lastLoadedAt
 });
+let isRunning = false;
 
 export const startDeviceEmployeeTemplateSync = () => {
   // jalan tiap 3 detik
   cron.schedule('*/3 * * * * *', async () => {
     console.log('__________ Memulai Device Template Sync __________');
-
+  if (isRunning) return;
+  isRunning = true;
     try {
       /* =====================================================
        * 1️⃣ Ambil data template dari BioTime (snake_case)
@@ -78,9 +80,9 @@ export const startDeviceEmployeeTemplateSync = () => {
         .join(',');
 
       const { rows: existingRows } = await pgPool2.query(`
-        SELECT index, fid, templateType, majorver
+        SELECT "index", fid, templateType, majorver
         FROM deviceEmployeeTemplates
-        WHERE (index, fid, templateType, majorver)
+        WHERE ("index", fid, templateType, majorver)
         IN (${dedupValues})
       `, dedupParams);
 
@@ -137,7 +139,7 @@ export const startDeviceEmployeeTemplateSync = () => {
           (
             employeeId,
             deviceId,
-            index,
+            "index",
             fid,
             templateType,
             majorver,
@@ -167,6 +169,8 @@ export const startDeviceEmployeeTemplateSync = () => {
 
     } catch (err: any) {
       console.error('❌ Sync error:', err.message || err);
-    }
+    }finally {
+    isRunning = false;
+  }
   });
 };
