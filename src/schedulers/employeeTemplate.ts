@@ -60,7 +60,7 @@ const buildIgnoreSnClause = (ignored: Set<string>) => {
  * Cron Sync (FAST)
  * =============================== */
 export const startDeviceEmployeeTemplateSync = () => {
-  cron.schedule('*/5 * * * * *', async () => {
+  cron.schedule('*/10 * * * * *', async () => {
     if (isRunning) return;
     isRunning = true;
     console.log("jalan")
