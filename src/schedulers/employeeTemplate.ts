@@ -91,7 +91,7 @@ export const startDeviceEmployeeTemplateSync = () => {
       `, params);
 
       if (!sourceRows.length) return;
-
+        console.log("ke sini ngga 1")
       /* =====================================================
        * 2️⃣ PRE-FILTER (device + memory dedup)
        * ===================================================== */
@@ -145,7 +145,7 @@ export const startDeviceEmployeeTemplateSync = () => {
        * ===================================================== */
       const now = new Date();
       const payload: any[] = [];
-
+      console.log("ke sini ngga 2")
       for (const r of candidates) {
         if (dbDupSet.has(r.dedupKey)) continue;
 
@@ -166,7 +166,7 @@ export const startDeviceEmployeeTemplateSync = () => {
 
         dedupCache.add(r.dedupKey); // 🔥 cache
       }
-
+      console.log("ke sini ngga 3")
       if (!payload.length) return;
 
       /* =====================================================
