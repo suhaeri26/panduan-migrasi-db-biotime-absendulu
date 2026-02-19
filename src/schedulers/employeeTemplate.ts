@@ -25,7 +25,7 @@ export const startDeviceEmployeeTemplateSync = () => {
             ib.bio_tmp        AS "data"
         FROM iclock_biodata ib 
         LEFT JOIN personnel_employee e
-            ON id.employee_id = e.id
+            ON ib.employee_id = e.id
         WHERE ib."issend" = false
         LIMIT 250;
       `);
