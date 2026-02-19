@@ -4,7 +4,7 @@ export const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsImVtY
 export async function kirimData(body: any, path: string) {
   try {
     const response = await axios.post(
-      `http://test-presensi.bakriesumatera.com:8081/${path}`,
+      `http://localhost:8081/${path}`,
         body,
       {
         headers: {
