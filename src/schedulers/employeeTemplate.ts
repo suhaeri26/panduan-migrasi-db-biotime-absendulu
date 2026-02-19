@@ -11,12 +11,12 @@ export const loadDeviceCache = async () => {
   const { rows } = await pgPool2.query(`
     SELECT
       "deviceId",
-      "deviceSN"
+      "deviceSN" AS "deviceSn"
     FROM "devices"
   `);
-
+    console.log(rows.map(r => [r.deviceSn, r.deviceId]))
   deviceCache = new Map(
-    rows.map(r => [r.deviceSN, r.deviceId])
+    rows.map(r => [r.deviceSn, r.deviceId])
   );
 
   lastLoadedAt = Date.now();
