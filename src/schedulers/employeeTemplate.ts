@@ -27,18 +27,10 @@ export const getDeviceIdBySn = (sn: string): number | undefined => {
 };
 
 /* ===============================
- * Ignore SN (IN-MEMORY)
+ * In-Memory Helpers
  * =============================== */
-const ignoredDeviceSn = new Set<string>();
-
-/* ===============================
- * Dedup cache (MEMORY)
- * =============================== */
-const dedupCache = new Set<string>();
-
-/* ===============================
- * Cron Lock
- * =============================== */
+const ignoredDeviceSn = new Set<string>();   // device tidak ada
+const dedupCache = new Set<string>();        // dedup cepat
 let isRunning = false;
 
 /* ===============================
@@ -57,16 +49,16 @@ const buildIgnoreSnClause = (ignored: Set<string>) => {
 };
 
 /* ===============================
- * Cron Sync (FAST)
+ * Cron Sync (FINAL)
  * =============================== */
 export const startDeviceEmployeeTemplateSync = () => {
-  cron.schedule('*/3 * * * * *', async () => {
+  const job = async () => {
     if (isRunning) return;
     isRunning = true;
-    console.log("jalan")
+
     try {
       /* =====================================================
-       * 1️⃣ Query BioTime (minimum work)
+       * 1️⃣ Ambil data BioTime
        * ===================================================== */
       const { clause, params } = buildIgnoreSnClause(ignoredDeviceSn);
 
@@ -84,39 +76,57 @@ export const startDeviceEmployeeTemplateSync = () => {
             ib.bio_tmp       AS "data"
         FROM iclock_biodata ib 
         LEFT JOIN personnel_employee e
-            ON ib.employee_id = e.id
+          ON ib.employee_id = e.id
         WHERE ib."issend" = false
         ${clause}
         LIMIT 250;
       `, params);
 
-      if (!sourceRows.length) return;
-        console.log("ke sini ngga 1")
+      if (!sourceRows.length) {
+        console.log('[CRON] no data');
+        return;
+      }
+
       /* =====================================================
-       * 2️⃣ PRE-FILTER (device + memory dedup)
+       * 2️⃣ Pre-filter + klasifikasi
        * ===================================================== */
       const candidates: any[] = [];
       const dedupTuples: any[] = [];
 
+      const insertIds: number[] = [];
+      const duplicateIds: number[] = [];
+
       for (const r of sourceRows) {
         const deviceId = getDeviceIdBySn(r.deviceSn);
 
+        // ❌ device tidak ada → skip permanen
         if (!deviceId) {
           ignoredDeviceSn.add(r.deviceSn);
           continue;
         }
 
         const key = `${r.index}|${r.fid}|${r.templateType}|${r.majorver}`;
-        if (dedupCache.has(key)) continue;
+
+        // ♻️ sudah pernah diproses di memory
+        if (dedupCache.has(key)) {
+          duplicateIds.push(r.id);
+          continue;
+        }
 
         dedupTuples.push(r.index, r.fid, r.templateType, r.majorver);
         candidates.push({ ...r, deviceId, dedupKey: key });
       }
 
+      if (!candidates.length && duplicateIds.length) {
+        await markAsSent(duplicateIds);
+        console.log(`[CRON] all duplicate (memory)`);
+        return;
+      }
+
       if (!candidates.length) return;
 
       /* =====================================================
-       * 3️⃣ Dedup DB (JOIN VALUES — FAST)
+       * 3️⃣ Dedup ke DB tujuan (JOIN VALUES)
        * ===================================================== */
       const valuesSql = candidates.map((_, i) => {
         const b = i * 4;
@@ -145,9 +155,13 @@ export const startDeviceEmployeeTemplateSync = () => {
        * ===================================================== */
       const now = new Date();
       const payload: any[] = [];
-      console.log("ke sini ngga 2")
+
       for (const r of candidates) {
-        if (dbDupSet.has(r.dedupKey)) continue;
+        if (dbDupSet.has(r.dedupKey)) {
+          duplicateIds.push(r.id);
+          dedupCache.add(r.dedupKey);
+          continue;
+        }
 
         payload.push({
           employeeId: r.employeeId,
@@ -164,44 +178,54 @@ export const startDeviceEmployeeTemplateSync = () => {
           updatedAt: now
         });
 
-        dedupCache.add(r.dedupKey); // 🔥 cache
+        insertIds.push(r.id);
+        dedupCache.add(r.dedupKey);
       }
-      console.log("ke sini ngga 3")
-      if (!payload.length) return;
 
       /* =====================================================
-       * 5️⃣ Bulk insert (1 query)
+       * 5️⃣ Insert data baru
        * ===================================================== */
-      const values = payload.map((_, i) => {
-        const b = i * 12;
-        return `(
-          $${b + 1}, $${b + 2}, $${b + 3}, $${b + 4},
-          $${b + 5}, $${b + 6}, $${b + 7}, $${b + 8},
-          $${b + 9}, $${b + 10}, $${b + 11}, $${b + 12}
-        )`;
-      }).join(',');
+      if (payload.length) {
+        const values = payload.map((_, i) => {
+          const b = i * 12;
+          return `(
+            $${b + 1}, $${b + 2}, $${b + 3}, $${b + 4},
+            $${b + 5}, $${b + 6}, $${b + 7}, $${b + 8},
+            $${b + 9}, $${b + 10}, $${b + 11}, $${b + 12}
+          )`;
+        }).join(',');
 
-      await pgPool2.query(`
-        INSERT INTO "deviceemployeetemplates"
-        (
-          "employeeId",
-          "deviceId",
-          "index",
-          "fid",
-          "templateType",
-          "majorver",
-          "minorver",
-          "format",
-          "size",
-          "data",
-          "createdAt",
-          "updatedAt"
-        )
-        VALUES ${values}
-      `, payload.flatMap(p => Object.values(p)));
+        await pgPool2.query(`
+          INSERT INTO "deviceemployeetemplates"
+          (
+            "employeeId",
+            "deviceId",
+            "index",
+            "fid",
+            "templateType",
+            "majorver",
+            "minorver",
+            "format",
+            "size",
+            "data",
+            "createdAt",
+            "updatedAt"
+          )
+          VALUES ${values}
+        `, payload.flatMap(p => Object.values(p)));
+      }
+
+      /* =====================================================
+       * 6️⃣ UPDATE issend (BARU + DUPLIKAT)
+       * ===================================================== */
+      const doneIds = [...insertIds, ...duplicateIds];
+
+      if (doneIds.length) {
+        await markAsSent(doneIds);
+      }
 
       console.log(
-        `🚀 FAST SYNC | inserted=${payload.length} | cacheDedup=${dedupCache.size} | ignoredSN=${ignoredDeviceSn.size}`
+        `🚀 FAST SYNC | inserted=${insertIds.length} | duplicate=${duplicateIds.length} | ignoredSN=${ignoredDeviceSn.size}`
       );
 
     } catch (err: any) {
@@ -209,5 +233,22 @@ export const startDeviceEmployeeTemplateSync = () => {
     } finally {
       isRunning = false;
     }
-  });
+  };
+
+  // 🔥 langsung jalan sekali
+  job();
+
+  // 🔁 lalu periodik
+  cron.schedule('*/3 * * * * *', job);
+};
+
+/* ===============================
+ * Helper update issend
+ * =============================== */
+const markAsSent = async (ids: number[]) => {
+  await pgPool.query(`
+    UPDATE iclock_biodata
+    SET "issend" = true
+    WHERE id = ANY($1)
+  `, [ids]);
 };
