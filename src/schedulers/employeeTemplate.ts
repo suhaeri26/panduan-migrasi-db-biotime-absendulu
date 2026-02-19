@@ -63,7 +63,7 @@ export const startDeviceEmployeeTemplateSync = () => {
   cron.schedule('*/5 * * * * *', async () => {
     if (isRunning) return;
     isRunning = true;
-
+    console.log("jalan")
     try {
       /* =====================================================
        * 1️⃣ Query BioTime (minimum work)
