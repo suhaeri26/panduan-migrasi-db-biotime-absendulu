@@ -60,7 +60,7 @@ const buildIgnoreSnClause = (ignored: Set<string>) => {
  * Cron Sync (FAST)
  * =============================== */
 export const startDeviceEmployeeTemplateSync = () => {
-  cron.schedule('*/10 * * * * *', async () => {
+  cron.schedule('*/5 * * * * *', async () => {
     if (isRunning) return;
     isRunning = true;
     console.log("jalan")
@@ -87,7 +87,7 @@ export const startDeviceEmployeeTemplateSync = () => {
             ON ib.employee_id = e.id
         WHERE ib."issend" = false
         ${clause}
-        LIMIT 100;
+        LIMIT 250;
       `, params);
 
       if (!sourceRows.length) return;
