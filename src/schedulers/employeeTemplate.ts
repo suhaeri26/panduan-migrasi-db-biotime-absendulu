@@ -38,7 +38,7 @@ export const startDeviceEmployeeTemplateSync = () => {
       // console.log({filteredEmployees: JSON.stringify(filteredEmployees), filteredUsers: JSON.stringify(filteredUsers)});
       // Kirim ke MySQL writer
       const payload = employeesTempalte.map((x)=>({...x, size: x.data.length}))
-      const response = await kirimData(payload, "/api/v1/device-template/bulk-create");
+      const response = await kirimData(payload, "api/v1/device-template/bulk-create");
 
       // Update isSend = true
       const empCodes = employeesTempalte.map(e => e.id);
