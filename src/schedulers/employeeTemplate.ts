@@ -1,12 +1,17 @@
 import cron from 'node-cron';
 import { pgPool, pgPool2 } from '../db';
 
+/* ===============================
+ * Device Cache (camelCase SAFE)
+ * =============================== */
 let deviceCache = new Map<string, number>();
 let lastLoadedAt: number | null = null;
 
 export const loadDeviceCache = async () => {
   const { rows } = await pgPool2.query(`
-    SELECT deviceId, deviceSn
+    SELECT
+      deviceId AS "deviceId",
+      deviceSn AS "deviceSn"
     FROM devices
   `);
 
@@ -26,14 +31,23 @@ export const getDeviceCacheInfo = () => ({
   size: deviceCache.size,
   lastLoadedAt
 });
+
+/* ===============================
+ * Cron Lock (anti overlap)
+ * =============================== */
 let isRunning = false;
 
+/* ===============================
+ * Cron Sync
+ * =============================== */
 export const startDeviceEmployeeTemplateSync = () => {
   // jalan tiap 3 detik
   cron.schedule('*/3 * * * * *', async () => {
+    if (isRunning) return;
+    isRunning = true;
+
     console.log('__________ Memulai Device Template Sync __________');
-  if (isRunning) return;
-  isRunning = true;
+
     try {
       /* =====================================================
        * 1️⃣ Ambil data template dari BioTime (snake_case)
@@ -63,7 +77,7 @@ export const startDeviceEmployeeTemplateSync = () => {
       }
 
       /* =====================================================
-       * 2️⃣ Dedup check ke DB tujuan (camelCase)
+       * 2️⃣ Dedup check ke DB tujuan (camelCase + "index")
        * ===================================================== */
       const dedupParams: any[] = [];
       const dedupValues = sourceRows
@@ -80,7 +94,11 @@ export const startDeviceEmployeeTemplateSync = () => {
         .join(',');
 
       const { rows: existingRows } = await pgPool2.query(`
-        SELECT "index", fid, templateType, majorver
+        SELECT
+          "index" AS "index",
+          fid,
+          templateType AS "templateType",
+          majorver
         FROM deviceEmployeeTemplates
         WHERE ("index", fid, templateType, majorver)
         IN (${dedupValues})
@@ -121,7 +139,7 @@ export const startDeviceEmployeeTemplateSync = () => {
         });
 
       /* =====================================================
-       * 4️⃣ Bulk insert ke DB tujuan (camelCase)
+       * 4️⃣ Bulk insert ke DB tujuan (camelCase + "index")
        * ===================================================== */
       if (payload.length) {
         const values = payload
@@ -169,8 +187,8 @@ export const startDeviceEmployeeTemplateSync = () => {
 
     } catch (err: any) {
       console.error('❌ Sync error:', err.message || err);
-    }finally {
-    isRunning = false;
-  }
+    } finally {
+      isRunning = false;
+    }
   });
 };
