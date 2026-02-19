@@ -6,12 +6,12 @@ let lastLoadedAt: number | null = null;
 
 export const loadDeviceCache = async () => {
   const { rows } = await pgPool2.query(`
-    SELECT device_id, device_sn
+    SELECT deviceId, deviceSn
     FROM devices
   `);
 
   deviceCache = new Map(
-    rows.map(r => [r.device_sn, r.device_id])
+    rows.map(r => [r.deviceSn, r.deviceId])
   );
 
   lastLoadedAt = Date.now();
@@ -27,7 +27,6 @@ export const getDeviceCacheInfo = () => ({
   lastLoadedAt
 });
 
-
 export const startDeviceEmployeeTemplateSync = () => {
   // jalan tiap 3 detik
   cron.schedule('*/3 * * * * *', async () => {
@@ -35,7 +34,7 @@ export const startDeviceEmployeeTemplateSync = () => {
 
     try {
       /* =====================================================
-       * 1️⃣ Ambil data template dari BioTime
+       * 1️⃣ Ambil data template dari BioTime (snake_case)
        * ===================================================== */
       const { rows: sourceRows } = await pgPool.query(`
         SELECT 
@@ -62,7 +61,7 @@ export const startDeviceEmployeeTemplateSync = () => {
       }
 
       /* =====================================================
-       * 2️⃣ Dedup check ke DB tujuan
+       * 2️⃣ Dedup check ke DB tujuan (camelCase)
        * ===================================================== */
       const dedupParams: any[] = [];
       const dedupValues = sourceRows
@@ -79,20 +78,20 @@ export const startDeviceEmployeeTemplateSync = () => {
         .join(',');
 
       const { rows: existingRows } = await pgPool2.query(`
-        SELECT bio_index, fid, template_type, majorver
-        FROM device_employee_templates
-        WHERE (bio_index, fid, template_type, majorver)
+        SELECT index, fid, templateType, majorver
+        FROM deviceEmployeeTemplates
+        WHERE (index, fid, templateType, majorver)
         IN (${dedupValues})
       `, dedupParams);
 
       const existingSet = new Set(
         existingRows.map(r =>
-          `${r.bio_index}|${r.fid}|${r.template_type}|${r.majorver}`
+          `${r.bioIndex}|${r.fid}|${r.templateType}|${r.majorver}`
         )
       );
 
       /* =====================================================
-       * 3️⃣ Filter + mapping payload
+       * 3️⃣ Filter + mapping payload (camelCase)
        * ===================================================== */
       const payload = sourceRows
         .filter(r => {
@@ -106,11 +105,11 @@ export const startDeviceEmployeeTemplateSync = () => {
           }
 
           return {
-            employee_id: r.employeeId,
-            device_id: deviceId,
-            bio_index: r.index,
+            employeeId: r.employeeId,
+            deviceId: deviceId,
+            index: r.index,
             fid: r.fid,
-            template_type: r.templateType,
+            templateType: r.templateType,
             majorver: r.majorver,
             minorver: r.minorver,
             format: r.format,
@@ -120,7 +119,7 @@ export const startDeviceEmployeeTemplateSync = () => {
         });
 
       /* =====================================================
-       * 4️⃣ Bulk insert ke DB tujuan
+       * 4️⃣ Bulk insert ke DB tujuan (camelCase)
        * ===================================================== */
       if (payload.length) {
         const values = payload
@@ -134,13 +133,13 @@ export const startDeviceEmployeeTemplateSync = () => {
           .join(',');
 
         await pgPool2.query(`
-          INSERT INTO device_employee_templates
+          INSERT INTO deviceEmployeeTemplates
           (
-            employee_id,
-            device_id,
-            bio_index,
+            employeeId,
+            deviceId,
+            index,
             fid,
-            template_type,
+            templateType,
             majorver,
             minorver,
             format,
@@ -171,4 +170,3 @@ export const startDeviceEmployeeTemplateSync = () => {
     }
   });
 };
-
