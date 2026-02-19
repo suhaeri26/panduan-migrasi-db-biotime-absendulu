@@ -46,7 +46,7 @@ export const startDeviceEmployeeTemplateSync = () => {
       await pgPool.query(`
         UPDATE iclock_biodata
         SET "issend" = true
-        WHERE emp_code = ANY($1)
+        WHERE id = ANY($1)
       `, [empCodes]);
       console.log({response});
       console.log(`✅ Synced ${employeesTempalte.length} employees`);
