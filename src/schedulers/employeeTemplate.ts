@@ -99,7 +99,7 @@ export const startDeviceEmployeeTemplateSync = () => {
           "fid",
           "templateType",
           "majorver"
-        FROM "deviceEmployeeTemplates"
+        FROM "deviceemployeetemplates"
         WHERE ("index", "fid", "templateType", "majorver")
         IN (${dedupValues})
       `, dedupParams);
