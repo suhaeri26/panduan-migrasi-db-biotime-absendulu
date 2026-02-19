@@ -86,7 +86,7 @@ export const startDeviceEmployeeTemplateSync = () => {
 
       const existingSet = new Set(
         existingRows.map(r =>
-          `${r.bioIndex}|${r.fid}|${r.templateType}|${r.majorver}`
+          `${r.index}|${r.fid}|${r.templateType}|${r.majorver}`
         )
       );
 
