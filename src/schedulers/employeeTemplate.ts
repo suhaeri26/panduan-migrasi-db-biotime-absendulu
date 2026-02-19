@@ -153,7 +153,7 @@ export const startDeviceEmployeeTemplateSync = () => {
           .join(',');
 
         await pgPool2.query(`
-          INSERT INTO "deviceEmployeeTemplates"
+          INSERT INTO "deviceemployeetemplates"
           (
             "employeeId",
             "deviceId",
