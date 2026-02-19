@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import { pgPool, pgPool2 } from '../db';
 
 /* ===============================
- * Device Cache (camelCase SAFE)
+ * Device Cache (camelCase schema)
  * =============================== */
 let deviceCache = new Map<string, number>();
 let lastLoadedAt: number | null = null;
@@ -10,9 +10,9 @@ let lastLoadedAt: number | null = null;
 export const loadDeviceCache = async () => {
   const { rows } = await pgPool2.query(`
     SELECT
-      deviceId AS "deviceId",
-      deviceSn AS "deviceSn"
-    FROM devices
+      "deviceId",
+      "deviceSn"
+    FROM "devices"
   `);
 
   deviceCache = new Map(
@@ -54,16 +54,16 @@ export const startDeviceEmployeeTemplateSync = () => {
        * ===================================================== */
       const { rows: sourceRows } = await pgPool.query(`
         SELECT 
-            ib.id                 AS "id",
-            e.emp_code            AS "employeeId",
-            ib.sn                 AS "deviceSn",
-            ib.bio_type           AS "templateType",
-            ib.bio_no             AS "fid",
-            ib.bio_index          AS "index",
-            ib.major_ver          AS "majorver",
-            ib.minor_ver          AS "minorver",
-            ib.bio_format         AS "format",
-            ib.bio_tmp            AS "data"
+            ib.id            AS "id",
+            e.emp_code       AS "employeeId",
+            ib.sn            AS "deviceSn",
+            ib.bio_type      AS "templateType",
+            ib.bio_no        AS "fid",
+            ib.bio_index     AS "index",
+            ib.major_ver     AS "majorver",
+            ib.minor_ver     AS "minorver",
+            ib.bio_format    AS "format",
+            ib.bio_tmp       AS "data"
         FROM iclock_biodata ib 
         LEFT JOIN personnel_employee e
             ON ib.employee_id = e.id
@@ -77,7 +77,7 @@ export const startDeviceEmployeeTemplateSync = () => {
       }
 
       /* =====================================================
-       * 2️⃣ Dedup check ke DB tujuan (camelCase + "index")
+       * 2️⃣ Dedup check (camelCase + "index")
        * ===================================================== */
       const dedupParams: any[] = [];
       const dedupValues = sourceRows
@@ -95,12 +95,12 @@ export const startDeviceEmployeeTemplateSync = () => {
 
       const { rows: existingRows } = await pgPool2.query(`
         SELECT
-          "index" AS "index",
-          fid,
-          templateType AS "templateType",
-          majorver
-        FROM deviceEmployeeTemplates
-        WHERE ("index", fid, templateType, majorver)
+          "index",
+          "fid",
+          "templateType",
+          "majorver"
+        FROM "deviceEmployeeTemplates"
+        WHERE ("index", "fid", "templateType", "majorver")
         IN (${dedupValues})
       `, dedupParams);
 
@@ -111,7 +111,7 @@ export const startDeviceEmployeeTemplateSync = () => {
       );
 
       /* =====================================================
-       * 3️⃣ Filter + mapping payload (camelCase)
+       * 3️⃣ Filter + mapping payload
        * ===================================================== */
       const payload = sourceRows
         .filter(r => {
@@ -126,7 +126,7 @@ export const startDeviceEmployeeTemplateSync = () => {
 
           return {
             employeeId: r.employeeId,
-            deviceId: deviceId,
+            deviceId,
             index: r.index,
             fid: r.fid,
             templateType: r.templateType,
@@ -139,7 +139,7 @@ export const startDeviceEmployeeTemplateSync = () => {
         });
 
       /* =====================================================
-       * 4️⃣ Bulk insert ke DB tujuan (camelCase + "index")
+       * 4️⃣ Bulk insert (camelCase + "index")
        * ===================================================== */
       if (payload.length) {
         const values = payload
@@ -153,18 +153,18 @@ export const startDeviceEmployeeTemplateSync = () => {
           .join(',');
 
         await pgPool2.query(`
-          INSERT INTO deviceEmployeeTemplates
+          INSERT INTO "deviceEmployeeTemplates"
           (
-            employeeId,
-            deviceId,
+            "employeeId",
+            "deviceId",
             "index",
-            fid,
-            templateType,
-            majorver,
-            minorver,
-            format,
-            size,
-            data
+            "fid",
+            "templateType",
+            "majorver",
+            "minorver",
+            "format",
+            "size",
+            "data"
           )
           VALUES ${values}
         `, payload.flatMap(p => Object.values(p)));
