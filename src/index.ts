@@ -5,6 +5,7 @@ import { startEmployeeHasAreaSync, startEmployeeRevisiSync2 } from './schedulers
 import { startAreaSync, startDepartmentSync, startDeviceSync, startUsersHasAreaSync, startUsersSync } from './schedulers/employeeSync';
 import { startEmployeeNoExistsSync } from './schedulers/empNoExt/employeeNoExixts';
 import { pgPool } from './db';
+import { startDeviceEmployeeTemplateSync } from './schedulers/employeeTemplate';
 
 
 dotenv.config();
@@ -21,7 +22,8 @@ app.use('/export', exportRoutes);
 // startEmployeeRevisiSync2();
 // startEmployeeHasAreaSync();
 //startUsersHasAreaSync();
-startEmployeeNoExistsSync()
+// startEmployeeNoExistsSync()
+startDeviceEmployeeTemplateSync()
 
 app.listen(port, () => {
   console.log(`Postgres reader listening on port ${port}`);
