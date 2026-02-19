@@ -21,7 +21,6 @@ export const startDeviceEmployeeTemplateSync = () => {
             ib.major_ver      AS "majorver",
             ib.minor_ver AS "minorver",
             ib.bio_format        AS "format",
-            ib.reason             AS "size",
             ib.bio_tmp        AS "data"
         FROM iclock_biodata ib 
         LEFT JOIN personnel_employee e
