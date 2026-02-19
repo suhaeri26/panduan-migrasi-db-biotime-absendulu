@@ -5,7 +5,7 @@ import { kirimData, token } from '../healper';
 
 export const startDeviceEmployeeTemplateSync = () => {
   // Schedule setiap 25 detik
-  cron.schedule('*/1 * * * * *', async () => {
+  cron.schedule('*/3 * * * * *', async () => {
     console.log("__________ Memulai ___________")
     try {
       const result = await pgPool.query(`
