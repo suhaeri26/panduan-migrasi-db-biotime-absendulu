@@ -41,17 +41,12 @@ let isRunning = false;
  * Cron Sync
  * =============================== */
 export const startDeviceEmployeeTemplateSync = () => {
-  // jalan tiap 3 detik
   cron.schedule('*/3 * * * * *', async () => {
     if (isRunning) return;
     isRunning = true;
 
-    console.log('__________ Memulai Device Template Sync __________');
-
     try {
-      /* =====================================================
-       * 1️⃣ Ambil data template dari BioTime (snake_case)
-       * ===================================================== */
+      /* 1️⃣ Ambil data BioTime */
       const { rows: sourceRows } = await pgPool.query(`
         SELECT 
             ib.id            AS "id",
@@ -71,34 +66,18 @@ export const startDeviceEmployeeTemplateSync = () => {
         LIMIT 250;
       `);
 
-      if (!sourceRows.length) {
-        console.log('✅ Tidak ada template baru');
-        return;
-      }
+      if (!sourceRows.length) return;
 
-      /* =====================================================
-       * 2️⃣ Dedup check (camelCase + "index")
-       * ===================================================== */
+      /* 2️⃣ Dedup */
       const dedupParams: any[] = [];
-      const dedupValues = sourceRows
-        .map((r, i) => {
-          const base = i * 4;
-          dedupParams.push(
-            r.index,
-            r.fid,
-            r.templateType,
-            r.majorver
-          );
-          return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4})`;
-        })
-        .join(',');
+      const dedupValues = sourceRows.map((r, i) => {
+        const b = i * 4;
+        dedupParams.push(r.index, r.fid, r.templateType, r.majorver);
+        return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4})`;
+      }).join(',');
 
       const { rows: existingRows } = await pgPool2.query(`
-        SELECT
-          "index",
-          "fid",
-          "templateType",
-          "majorver"
+        SELECT "index", "fid", "templateType", "majorver"
         FROM "deviceemployeetemplates"
         WHERE ("index", "fid", "templateType", "majorver")
         IN (${dedupValues})
@@ -110,19 +89,19 @@ export const startDeviceEmployeeTemplateSync = () => {
         )
       );
 
-      /* =====================================================
-       * 3️⃣ Filter + mapping payload
-       * ===================================================== */
+      /* 3️⃣ Build payload (SKIP kalau device tidak ada) */
+      const now = new Date();
+
       const payload = sourceRows
-        .filter(r => {
-          const key = `${r.index}|${r.fid}|${r.templateType}|${r.majorver}`;
-          return !existingSet.has(key);
-        })
         .map(r => {
           const deviceId = getDeviceIdBySn(r.deviceSn);
           if (!deviceId) {
-            throw new Error(`❌ Device SN ${r.deviceSn} tidak ada di cache`);
+            console.warn(`⚠️ Skip device ${r.deviceSn}`);
+            return null;
           }
+
+          const key = `${r.index}|${r.fid}|${r.templateType}|${r.majorver}`;
+          if (existingSet.has(key)) return null;
 
           return {
             employeeId: r.employeeId,
@@ -134,23 +113,22 @@ export const startDeviceEmployeeTemplateSync = () => {
             minorver: r.minorver,
             format: r.format,
             size: r.data.length,
-            data: r.data
+            data: r.data,
+            createdAt: now,
+            updatedAt: now
           };
-        });
+        })
+        .filter(Boolean) as any[];
 
-      /* =====================================================
-       * 4️⃣ Bulk insert (camelCase + "index")
-       * ===================================================== */
+      /* 4️⃣ Insert */
       if (payload.length) {
-        const values = payload
-          .map((_, i) => {
-            const b = i * 10;
-            return `(
-              $${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5},
-              $${b + 6}, $${b + 7}, $${b + 8}, $${b + 9}, $${b + 10}
-            )`;
-          })
-          .join(',');
+        const values = payload.map((_, i) => {
+          const b = i * 12;
+          return `(
+            $${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6},
+            $${b + 7}, $${b + 8}, $${b + 9}, $${b + 10}, $${b + 11}, $${b + 12}
+          )`;
+        }).join(',');
 
         await pgPool2.query(`
           INSERT INTO "deviceemployeetemplates"
@@ -164,26 +142,23 @@ export const startDeviceEmployeeTemplateSync = () => {
             "minorver",
             "format",
             "size",
-            "data"
+            "data",
+            "createdAt",
+            "updatedAt"
           )
           VALUES ${values}
         `, payload.flatMap(p => Object.values(p)));
-
-        console.log(`✅ Inserted ${payload.length} template`);
-      } else {
-        console.log('ℹ️ Semua template sudah ada (duplicate)');
       }
 
-      /* =====================================================
-       * 5️⃣ Update issend di BioTime
-       * ===================================================== */
-      await pgPool.query(`
-        UPDATE iclock_biodata
-        SET "issend" = true
-        WHERE id = ANY($1)
-      `, [sourceRows.map(r => r.id)]);
-
-      console.log(`🎉 Sync selesai (${sourceRows.length} data diproses)`);
+      /* 5️⃣ Update issend HANYA untuk yang sukses */
+      const successIds = payload.map(p => p?.id).filter(Boolean);
+      if (successIds.length) {
+        await pgPool.query(`
+          UPDATE iclock_biodata
+          SET "issend" = true
+          WHERE id = ANY($1)
+        `, [successIds]);
+      }
 
     } catch (err: any) {
       console.error('❌ Sync error:', err.message || err);
