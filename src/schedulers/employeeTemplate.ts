@@ -14,9 +14,10 @@ export const loadDeviceCache = async () => {
     FROM "devices"
   `);
 
-  deviceCache = new Map(
-    rows.map(r => [r.deviceSn.trim(), r.deviceId])
-  );
+  deviceCache.clear();
+  for (const r of rows) {
+    deviceCache.set(r.deviceSn.trim(), r.deviceId);
+  }
 
   console.log(`✅ Device cache loaded (${deviceCache.size} devices)`);
 };
@@ -31,6 +32,11 @@ export const getDeviceIdBySn = (sn: string): number | undefined => {
 const ignoredDeviceSn = new Set<string>();
 
 /* ===============================
+ * Dedup cache (MEMORY)
+ * =============================== */
+const dedupCache = new Set<string>();
+
+/* ===============================
  * Cron Lock
  * =============================== */
 let isRunning = false;
@@ -39,9 +45,7 @@ let isRunning = false;
  * Helper: build NOT IN clause
  * =============================== */
 const buildIgnoreSnClause = (ignored: Set<string>) => {
-  if (!ignored.size) {
-    return { clause: '', params: [] as string[] };
-  }
+  if (!ignored.size) return { clause: '', params: [] as string[] };
 
   const params = [...ignored];
   const placeholders = params.map((_, i) => `$${i + 1}`).join(',');
@@ -53,16 +57,16 @@ const buildIgnoreSnClause = (ignored: Set<string>) => {
 };
 
 /* ===============================
- * Cron Sync
+ * Cron Sync (FAST)
  * =============================== */
 export const startDeviceEmployeeTemplateSync = () => {
-  cron.schedule('*/3 * * * * *', async () => {
+  cron.schedule('*/5 * * * * *', async () => {
     if (isRunning) return;
     isRunning = true;
 
     try {
       /* =====================================================
-       * 1️⃣ Query BioTime (EXCLUDE ignored SN)
+       * 1️⃣ Query BioTime (minimum work)
        * ===================================================== */
       const { clause, params } = buildIgnoreSnClause(ignoredDeviceSn);
 
@@ -83,115 +87,121 @@ export const startDeviceEmployeeTemplateSync = () => {
             ON ib.employee_id = e.id
         WHERE ib."issend" = false
         ${clause}
-        LIMIT 250;
+        LIMIT 100;
       `, params);
 
       if (!sourceRows.length) return;
 
       /* =====================================================
-       * 2️⃣ Dedup check (DB tujuan)
+       * 2️⃣ PRE-FILTER (device + memory dedup)
        * ===================================================== */
-      const dedupParams: any[] = [];
-      const dedupValues = sourceRows.map((r, i) => {
+      const candidates: any[] = [];
+      const dedupTuples: any[] = [];
+
+      for (const r of sourceRows) {
+        const deviceId = getDeviceIdBySn(r.deviceSn);
+
+        if (!deviceId) {
+          ignoredDeviceSn.add(r.deviceSn);
+          continue;
+        }
+
+        const key = `${r.index}|${r.fid}|${r.templateType}|${r.majorver}`;
+        if (dedupCache.has(key)) continue;
+
+        dedupTuples.push(r.index, r.fid, r.templateType, r.majorver);
+        candidates.push({ ...r, deviceId, dedupKey: key });
+      }
+
+      if (!candidates.length) return;
+
+      /* =====================================================
+       * 3️⃣ Dedup DB (JOIN VALUES — FAST)
+       * ===================================================== */
+      const valuesSql = candidates.map((_, i) => {
         const b = i * 4;
-        dedupParams.push(
-          r.index,
-          r.fid,
-          r.templateType,
-          r.majorver
-        );
         return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4})`;
       }).join(',');
 
       const { rows: existingRows } = await pgPool2.query(`
-        SELECT
-          "index",
-          "fid",
-          "templateType",
-          "majorver"
-        FROM "deviceemployeetemplates"
-        WHERE ("index", "fid", "templateType", "majorver")
-        IN (${dedupValues})
-      `, dedupParams);
+        SELECT t."index", t."fid", t."templateType", t."majorver"
+        FROM "deviceemployeetemplates" t
+        JOIN (VALUES ${valuesSql})
+          AS v("index","fid","templateType","majorver")
+          ON t."index" = v."index"
+         AND t."fid" = v."fid"
+         AND t."templateType" = v."templateType"
+         AND t."majorver" = v."majorver"
+      `, dedupTuples);
 
-      const existingSet = new Set(
+      const dbDupSet = new Set(
         existingRows.map(r =>
           `${r.index}|${r.fid}|${r.templateType}|${r.majorver}`
         )
       );
 
       /* =====================================================
-       * 3️⃣ Build payload
-       * - device tidak ada → MASUK IGNORE LIST
+       * 4️⃣ Build payload
        * ===================================================== */
       const now = new Date();
+      const payload: any[] = [];
 
-      const payload = sourceRows
-        .map(r => {
-          const deviceId = getDeviceIdBySn(r.deviceSn);
+      for (const r of candidates) {
+        if (dbDupSet.has(r.dedupKey)) continue;
 
-          // 🚫 DEVICE TIDAK ADA → IGNORE UNTUK CRON BERIKUTNYA
-          if (!deviceId) {
-            console.warn(`⚠️ Device ${r.deviceSn} di-ignore`);
-            ignoredDeviceSn.add(r.deviceSn);
-            return null;
-          }
+        payload.push({
+          employeeId: r.employeeId,
+          deviceId: r.deviceId,
+          index: r.index,
+          fid: r.fid,
+          templateType: r.templateType,
+          majorver: r.majorver,
+          minorver: r.minorver,
+          format: r.format,
+          size: r.data.length,
+          data: r.data,
+          createdAt: now,
+          updatedAt: now
+        });
 
-          const key = `${r.index}|${r.fid}|${r.templateType}|${r.majorver}`;
-          if (existingSet.has(key)) return null;
-
-          return {
-            employeeId: r.employeeId,
-            deviceId,
-            index: r.index,
-            fid: r.fid,
-            templateType: r.templateType,
-            majorver: r.majorver,
-            minorver: r.minorver,
-            format: r.format,
-            size: r.data.length,
-            data: r.data,
-            createdAt: now,
-            updatedAt: now
-          };
-        })
-        .filter(Boolean) as any[];
-
-      /* =====================================================
-       * 4️⃣ Insert ke DB tujuan
-       * ===================================================== */
-      if (payload.length) {
-        const values = payload.map((_, i) => {
-          const b = i * 12;
-          return `(
-            $${b + 1}, $${b + 2}, $${b + 3}, $${b + 4},
-            $${b + 5}, $${b + 6}, $${b + 7}, $${b + 8},
-            $${b + 9}, $${b + 10}, $${b + 11}, $${b + 12}
-          )`;
-        }).join(',');
-
-        await pgPool2.query(`
-          INSERT INTO "deviceemployeetemplates"
-          (
-            "employeeId",
-            "deviceId",
-            "index",
-            "fid",
-            "templateType",
-            "majorver",
-            "minorver",
-            "format",
-            "size",
-            "data",
-            "createdAt",
-            "updatedAt"
-          )
-          VALUES ${values}
-        `, payload.flatMap(p => Object.values(p)));
+        dedupCache.add(r.dedupKey); // 🔥 cache
       }
 
+      if (!payload.length) return;
+
+      /* =====================================================
+       * 5️⃣ Bulk insert (1 query)
+       * ===================================================== */
+      const values = payload.map((_, i) => {
+        const b = i * 12;
+        return `(
+          $${b + 1}, $${b + 2}, $${b + 3}, $${b + 4},
+          $${b + 5}, $${b + 6}, $${b + 7}, $${b + 8},
+          $${b + 9}, $${b + 10}, $${b + 11}, $${b + 12}
+        )`;
+      }).join(',');
+
+      await pgPool2.query(`
+        INSERT INTO "deviceemployeetemplates"
+        (
+          "employeeId",
+          "deviceId",
+          "index",
+          "fid",
+          "templateType",
+          "majorver",
+          "minorver",
+          "format",
+          "size",
+          "data",
+          "createdAt",
+          "updatedAt"
+        )
+        VALUES ${values}
+      `, payload.flatMap(p => Object.values(p)));
+
       console.log(
-        `✅ Sync OK | inserted=${payload.length}, ignoredSN=${ignoredDeviceSn.size}`
+        `🚀 FAST SYNC | inserted=${payload.length} | cacheDedup=${dedupCache.size} | ignoredSN=${ignoredDeviceSn.size}`
       );
 
     } catch (err: any) {
