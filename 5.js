@@ -1,6 +1,6 @@
 UPDATE employees
 SET statusAtt = 'shift'
-WHERE employeeId IN (
+WHERE "employeeId" IN (
   '2201501004870',
   '2201210004965',
   '2202306005856',
